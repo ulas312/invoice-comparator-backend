@@ -1,22 +1,41 @@
-const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
+import mongoose from 'mongoose';
+import bcrypt from 'bcrypt';
+import uniqueValidator from 'mongoose-unique-validator';
+import mongooseHidden from 'mongoose-hidden';
+import { emailRegex } from '../lib/stringTesters.js';
 
 const userSchema = new mongoose.Schema({
-  username: { type: String, required: true, unique: true },
-  email: { type: String, required: true, unique: true },
-  password: { type: String, required: true },
+  username: { type: String, required: true },
+  isAdmin: { type: Boolean },
+  email: {
+    type: String,
+    required: true,
+    unique: true,
+    validate: (email) => emailRegex.test(email),
+  },
+  password: {
+    type: String,
+    required: true,
+    validate: (pw) =>
+      /(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{8,}$/.test(pw),
+  },
 });
 
-userSchema.pre('save', async function (next) {
-  if (!this.isModified('password')) return next();
-  const salt = await bcrypt.genSalt(10);
-  this.password = await bcrypt.hash(this.password, salt);
+userSchema.pre('save', function encryptPassword(next) {
+  if (this.isModified('password')) {
+    this.password = bcrypt.hashSync(this.password, bcrypt.genSaltSync());
+  }
   next();
 });
 
-userSchema.methods.matchPassword = async function (password) {
-  return await bcrypt.compare(password, this.password);
+userSchema.methods.validatePassword = function validatePassword(password) {
+  return bcrypt.compareSync(password, this.password);
 };
 
-const User = mongoose.model('User', userSchema);
-module.exports = User;
+userSchema.plugin(
+  mongooseHidden({ defaultHidden: { password: true, email: true } })
+);
+
+userSchema.plugin(uniqueValidator);
+
+export default mongoose.model('User', userSchema);
